@@ -1,17 +1,42 @@
-# 🤖 AI Agent RAG Architecture con n8n y Telegram
+# Telegram RAG AI Agent 🤖🚀
 
-Este repositorio documenta la construcción de un Agente de Inteligencia Artificial utilizando la arquitectura RAG (Retrieval-Augmented Generation), automatizado completamente a través de un servidor local de n8n desplegado en Docker.
+Este repositorio contiene la configuración y arquitectura para desplegar un bot de Telegram inteligente con capacidades **RAG (Retrieval-Augmented Generation)** utilizando **n8n**, **Google Gemini** y **Pinecone**.
 
-## 🛠️ Fase 1: Pipeline de Vectorización (Data Ingestion)
+El agente es capaz de recordar el contexto de la conversación de forma individual por usuario y consultar documentos PDF indexados previamente en una base de datos vectorial para responder preguntas específicas.
 
-El archivo `Document_Embedding_Process.json` contiene el flujo encargado de procesar la base de conocimiento del bot.
+---
 
-**Flujo técnico:**
-1. Extracción de texto plano a partir de documentos PDF.
-2. Fragmentación semántica (*Chunking*) configurada con un tamaño de 500 y un solapamiento (*overlap*) de 50 para preservar el contexto de las frases.
-3. Generación de Embeddings utilizando la API de Google Gemini (`models/embedding-001`).
-4. Almacenamiento en base de datos vectorial (Pinecone).
+## 📁 Archivos del Proyecto
 
-**💡 Resolución de problemas técnicos:**
-Inicialmente, la base de datos vectorial se instanció con 1536 dimensiones (estándar de OpenAI). Sin embargo, al pivotar el motor de IA hacia Google Gemini para optimizar costes, se detectó un error de incompatibilidad de tensores: el modelo `embedding-001` genera vectores mucho más densos (3072 dimensiones). 
-La solución implementada fue la reestructuración completa del índice de Pinecone a 3072 dimensiones, permitiendo una inserción exitosa de los datos.
+El proyecto se divide en dos flujos de n8n independientes que debes importar en tu instancia:
+
+### 1. `Document_Embedding_Process.json` (Fase de Ingesta)
+Este es el flujo encargado del preprocesamiento de los datos. 
+* Lee el documento PDF.
+* Extrae el texto y lo divide en fragmentos manejables (chunks).
+* Utiliza el modelo de Embeddings de Gemini para vectorizar el texto.
+* Sube y almacena los vectores en el índice de **Pinecone**.
+
+### 2. `telegram-rag-agent.json` (Fase Conversacional)
+Este es el flujo principal del bot que interactúa con el usuario. Está compuesto por los siguientes nodos en una arquitectura avanzada de Agente de IA:
+* **Telegram Trigger (`On message`)**: Escucha los mensajes entrantes en tiempo real.
+* **AI Agent (Nodo Central)**: El "cerebro" del flujo. Coordina el modelo de lenguaje, la memoria y las herramientas.
+   * *Input Prompt:* `={{ $json.message.text }}`
+* **Google Gemini Chat Model (`gemini-2.5`)**: El modelo fundacional que procesa y genera las respuestas.
+* **Simple Memory**: Proporciona memoria contextual.
+   * *Session ID:* `={{ $json.message.from.id }}` (Garantiza que cada usuario tenga su propio historial aislado).
+* **Vector Store Tool**: Herramienta que el Agente usa para buscar en los documentos.
+   * *Pinecone Vector Store:* Conectado al índice donde reside el PDF.
+   * *Embeddings Google Gemini:* Vectoriza la consulta del usuario en tiempo real.
+* **Telegram Node (`Send Message`)**: Envía la respuesta generada de vuelta al usuario.
+
+---
+
+## 🌐 Despliegue en Entorno Local (Webhook Seguro)
+
+Dado que Telegram requiere estrictamente una conexión cifrada (`https://`) y pública para enviar los mensajes mediante webhooks, y el servicio nativo de túneles de n8n v2 está discontinuado, se utiliza **Cloudflare Tunnels** de forma anónima y gratuita.
+
+### Paso 1: Levantar el Túnel de Cloudflare
+Ejecuta el siguiente comando en tu terminal local para exponer el puerto de n8n:
+```bash
+cloudflared tunnel --url http://localhost:5678
